@@ -74,6 +74,12 @@ def icon(name: str) -> QIcon:
     base = Path(__file__).parent / "icons"
     return QIcon(str(base / f"{name}.png"))
 
+def QColor_from_hex(hexstr: str) -> QColor:
+    # small color helper
+    c = QColor()
+    c.setNamedColor(hexstr)
+    return c
+
 # --- Filter to show only directories + PDF files ---
 class PdfFilterProxyModel(QSortFilterProxyModel):
     def filterAcceptsRow(self, source_row, source_parent):
@@ -233,7 +239,6 @@ class CenterPdfView(QWidget):
     def custom_zoom(self):
         self.view.setZoomMode(QPdfView.ZoomMode.Custom)
 
-
 # ---------- TOC (Bookmarks) Panel ----------
 class TocPanel(QWidget):
     """Tree view backed by QPdfBookmarkModel; emits page+location jumps when activated."""
@@ -284,8 +289,6 @@ class TocPanel(QWidget):
         if isinstance(page, int) and page >= 0:
             self.jumpToDestination.emit(page, QPointF(), 0.0)
 
-
-
 # ---------- Files + Favorites Panel ----------
 class FilesPanel(QWidget):
     fileActivated = pyqtSignal(str)
@@ -297,7 +300,25 @@ class FilesPanel(QWidget):
         # Load last root or default to home
         start_root = self._load_last_root() or str(Path.home())
 
-        # Top: file browser (from user's widget)
+        # --- File operation buttons above browser ---
+        self.btn_delete_file = QToolButton()
+        self.btn_delete_file.setIcon(icon("delete_pdf"))  # reuse bin icon
+        self.btn_delete_file.setToolTip("Delete selected file")
+
+        self.btn_rename_file = QToolButton()
+        self.btn_rename_file.setIcon(icon("rename_file"))  # temporary icon, replace if you have rename.png
+        self.btn_rename_file.setToolTip("Rename selected file")
+
+        # connect signals
+        # self.btn_delete_file.clicked.connect(self._delete_selected_file)
+        # self.btn_rename_file.clicked.connect(self._rename_selected_file)
+
+        file_btn_row = QHBoxLayout()
+        file_btn_row.addWidget(self.btn_delete_file)
+        file_btn_row.addWidget(self.btn_rename_file)
+        file_btn_row.addStretch(1)
+
+        # Top: file browser
         self.browser = PdfExplorerWidget(start_root, self)
         self.browser.tree.doubleClicked.connect(self._on_double_clicked)
 
@@ -326,12 +347,15 @@ class FilesPanel(QWidget):
         for btn in (
             self.btn_add,
             self.btn_del,
+            self.btn_delete_file,
+            self.btn_rename_file,
         ):
             btn.setIconSize(icon_size)
 
         # Layout
         v = QVBoxLayout(self)
         v.setContentsMargins(0, 0, 0, 0)
+        v.addLayout(file_btn_row)
         v.addWidget(self.browser, 4)
         bar = QFrame()
         bar.setFrameShape(QFrame.Shape.HLine)
@@ -422,6 +446,75 @@ class FilesPanel(QWidget):
                 except Exception as e:
                     QMessageBox.warning(self, "Error", f"Failed to open folder:\n{e}")
 
+    # ---- file operations ----
+    # def _delete_selected_file(self):
+    #     index = self.browser.tree.currentIndex()
+    #     if not index.isValid():
+    #         return
+
+    #     source_index = self.browser.proxy_model.mapToSource(index)
+    #     path = self.browser.fs_model.filePath(source_index)
+    #     if not Path(path).is_file():
+    #         QMessageBox.information(self, "Delete", "Please select a file to delete.")
+    #         return
+
+    #     reply = QMessageBox.question(
+    #         self,
+    #         "Delete File",
+    #         f"Are you sure you want to delete:\n{os.path.basename(path)}?",
+    #         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+    #     )
+    #     if reply != QMessageBox.StandardButton.Yes:
+    #         return
+
+    #     # --- Close document only if it is the same file ---
+    #     main_window = self.window()
+    #     if isinstance(main_window, QMainWindow) and hasattr(main_window, "center"):
+    #         center = main_window.center
+    #         doc = center.doc
+
+    #         # Detect if currently loaded document corresponds to this file
+    #         current_file = getattr(center, "_current_file", None)
+    #         if current_file and os.path.samefile(current_file, path):
+    #             doc.close()
+    #             center.show_overlay("Document closed.")
+    #             center._emit_current_page()  # keep UI consistent
+    #             center._current_file = None  # reset tracking
+
+    #     # --- Delete file safely ---
+    #     import time
+    #     for _ in range(5):  # try a few times if Windows keeps it locked
+    #         try:
+    #             os.remove(path)
+    #             break
+    #         except PermissionError:
+    #             time.sleep(0.1)
+    #     else:
+    #         QMessageBox.warning(
+    #             self,
+    #             "Error",
+    #             f"Failed to delete file:\n{path}\n\nIt may still be open by another process.",
+    #         )
+
+    # def _rename_selected_file(self):
+    #     index = self.browser.tree.currentIndex()
+    #     if not index.isValid():
+    #         return
+
+    #     source_index = self.browser.proxy_model.mapToSource(index)
+    #     path = self.browser.fs_model.filePath(source_index)
+    #     if not Path(path).is_file():
+    #         QMessageBox.information(self, "Rename", "Please select a file to rename.")
+    #         return
+
+    #     new_name, ok = QFileDialog.getSaveFileName(self, "Rename File", path, "PDF files (*.pdf)")
+    #     if not ok or not new_name:
+    #         return
+
+    #     try:
+    #         os.rename(path, new_name)
+    #     except Exception as e:
+    #         QMessageBox.warning(self, "Error", f"Failed to rename file:\n{e}")
 
 # ---------- Right Toolbar ----------
 class RightToolbar(QWidget):
@@ -711,13 +804,6 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self._save_window_settings()
         super().closeEvent(event)
-
-    
-# ---------- small color helper ----------
-def QColor_from_hex(hexstr: str) -> QColor:
-    c = QColor()
-    c.setNamedColor(hexstr)
-    return c
 
 # ---------- main ----------
 def main():
