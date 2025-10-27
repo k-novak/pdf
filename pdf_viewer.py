@@ -58,8 +58,8 @@ def app_data_dir() -> Path:
     p.mkdir(parents=True, exist_ok=True)
     return p
 
-FAVORITES_FILE = app_data_dir() / "favorites.txt"
-LAST_ROOT_FILE = app_data_dir() / "last_root.txt"
+FAVORITES_FILE    = app_data_dir() / "favorites.txt"
+LAST_ROOT_FILE    = app_data_dir() / "last_root.txt"
 WINDOW_STATE_FILE = app_data_dir() / "window_state.json"
 
 # ---------- Small helpers ----------
@@ -265,26 +265,7 @@ class TocPanel(QWidget):
 
     def _activated(self, idx):
         """Called when user clicks a TOC entry."""
-        try:
-            # Qt < 6.10
-            dest = idx.data(QPdfBookmarkModel.Role.Destination)
-        except AttributeError:
-            # Qt 6.10+ → only Page/Location/Zoom roles remain
-            dest = None
-
-        if dest is not None:
-            # Newer Qt uses QPdfLink-like object, but may still be QVariant
-            try:
-                page = dest.page()
-                point = dest.location()
-                zoom = dest.zoom()
-                if page >= 0:
-                    self.jumpToDestination.emit(page, point, zoom)
-                    return
-            except Exception:
-                pass
-
-        # --- Fallback path (always available) ---
+   
         page = idx.data(QPdfBookmarkModel.Role.Page)
         if isinstance(page, int) and page >= 0:
             self.jumpToDestination.emit(page, QPointF(), 0.0)
@@ -614,14 +595,14 @@ class RightToolbar(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Fast PDF Viewer")
+        self.setWindowTitle("PDF Viewer")
         self.resize(1280, 800)
 
         # Central splitter: left tabs | center | right toolbar
         self.splitter = QSplitter()
         self.splitter.setChildrenCollapsible(False)
 
-        # Left Tabs
+        # Left Pane
         self.tabs = QTabWidget()
         self.toc_panel = TocPanel()
         self.files_panel = FilesPanel()
@@ -629,7 +610,6 @@ class MainWindow(QMainWindow):
         self.files_panel.rootChanged.connect(self._persist_root)
         self.toc_panel.jumpToDestination.connect(lambda page, point, zoom: self.center.view.pageNavigator().jump(page, point, zoom))
 
-        # Tab order: Sheet 2 primary → Files first, TOC second
         self.tabs.addTab(self.files_panel, "Files")
         self.tabs.addTab(self.toc_panel, "TOC")
         self.tabs.setCurrentIndex(0)
@@ -659,12 +639,7 @@ class MainWindow(QMainWindow):
         self.splitter.setStretchFactor(1, 1)
         self.splitter.setStretchFactor(2, 0)
 
-        # No menu bar, no status bar (height is precious!)
-        w = QWidget()
-        w.setLayout(QHBoxLayout())
-        w.layout().setContentsMargins(0, 0, 0, 0)
-        w.layout().addWidget(self.splitter)
-        self.setCentralWidget(w)
+        self.setCentralWidget(self.splitter)
 
         # Shortcuts
         self._install_shortcuts()
@@ -809,14 +784,11 @@ class MainWindow(QMainWindow):
 def main():
     QApplication.setApplicationName(APP_NAME)
     QApplication.setOrganizationName(ORG_NAME)
+
     app = QApplication(sys.argv)
-
     win = MainWindow()
-
-    from PyQt6.QtCore import QTimer
-    QTimer.singleShot(0, win._load_window_settings)
-
     win.show()
+
     sys.exit(app.exec())
 
 if __name__ == "__main__":
