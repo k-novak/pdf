@@ -33,8 +33,9 @@ class PdfExplorerWidget(QTreeView):
     def __init__(self, root_path, parent=None):
         super().__init__(parent)
 
-        self.fs_model = QFileSystemModel()
         # self.setSelectionMode(QTreeView.SelectionMode.ExtendedSelection)
+        
+        self.fs_model = QFileSystemModel()
 
         self.proxy_model = PdfFilterProxyModel()
         self.proxy_model.setSourceModel(self.fs_model)
@@ -49,6 +50,30 @@ class PdfExplorerWidget(QTreeView):
         self.setColumnHidden(1, True)
         self.setColumnHidden(2, True)
         self.setColumnHidden(3, True)
+
+        self.setAlternatingRowColors(True)
+
+        self.setStyleSheet("""
+            QTreeView {
+                alternate-background-color: #E5E4E2;
+                outline: none;
+            }                          
+
+            QTreeView::item:hover {
+                color: black;
+                background-color: #99C2FF;
+            }
+
+            QTreeView::item:selected {
+                color: black;
+                background-color: #4D94FF;
+            }
+
+            QTreeView::item:selected:hover {
+                color: black;
+                background-color: #1A75FF;
+            }
+        """)
 
         # ---- Context menu ----
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
