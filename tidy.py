@@ -33,7 +33,7 @@ class PdfExplorerWidget(QTreeView):
     def __init__(self, root_path, parent=None):
         super().__init__(parent)
 
-        # self.setSelectionMode(QTreeView.SelectionMode.ExtendedSelection)
+        self.setSelectionMode(QTreeView.SelectionMode.ExtendedSelection)
         
         self.fs_model = QFileSystemModel()
 
@@ -56,7 +56,7 @@ class PdfExplorerWidget(QTreeView):
         self.setStyleSheet("""
             QTreeView {
                 alternate-background-color: #E5E4E2;
-                outline: none;
+                outline: none; /* remove black border around items */
             }                          
 
             QTreeView::item:hover {
@@ -86,51 +86,59 @@ class PdfExplorerWidget(QTreeView):
 
         proxy_index = self.indexAt(position)
         if not proxy_index.isValid(): return
-        
-        proxy_model = proxy_index.model()
-        source_model = proxy_model.sourceModel()
-        source_index = proxy_model.mapToSource(proxy_index)
-        currentFile = source_model.filePath(source_index)
 
-        if Path(currentFile).is_dir(): return
-        
-        # ---- Create actions ----
+        selected_files = []
+        for proxy_index in self.selectionModel().selectedRows():
+            source_index = self.proxy_model.mapToSource(proxy_index)
+            path = self.fs_model.filePath(source_index)
+            if Path(path).is_dir(): continue
+            selected_files.append(path)
+
+        if selected_files == []: return
+
+        # ---- Create menu ----
+        menu = QMenu(self)
+
+        if len(selected_files) == 1:
+            menu.addAction("Open in system viewer", lambda: self._openFile(selected_files[0]))
+            menu.addAction("Reveal in Explorer", lambda: self._revealInExplorer(selected_files[0]))
+            menu.addAction("Rename", lambda: self._renameFile(selected_files[0]))
+
         copy_action = QAction("Copy", self)
-        copy_action.triggered.connect(lambda: self._copyOnClipboard(currentFile))
+        copy_action.triggered.connect(lambda: self._copyOnClipboard(selected_files))
         copy_action.setShortcut(QKeySequence.StandardKey.Copy)
         self.addAction(copy_action)
-
-        # Create menu
-        menu = QMenu(self)
         menu.addAction(copy_action)
-        menu.addAction("Open", lambda: self._openFile(currentFile))
-        menu.addAction("Reveal in Explorer", lambda: self._revealInExplorer(currentFile))
-        menu.addAction("Delete", lambda: self._deleteFile(currentFile))
-        menu.addAction("Rename", lambda: self._renameFile(currentFile))
+
+        menu.addAction("Delete", lambda: self._deleteFile(selected_files))
+        
         menu.exec(self.viewport().mapToGlobal(position))
 
-    def _copyOnClipboard(self, file_path):
-        print("Copying to clipboard:", file_path)
+    def _copyOnClipboard(self, file_paths):
+        assert isinstance(file_paths, list), "file_paths should be a list"
+
         clipboard = QApplication.clipboard()
         clipboard.clear()
         mime_data = QMimeData()
-        mime_data.setUrls([QUrl.fromLocalFile(file_path)])
+        mime_data.setUrls([QUrl.fromLocalFile(file_path) for file_path in file_paths])
         clipboard.setMimeData(mime_data)
 
     def _openFile(self, file_path):
-        self._copyOnClipboard(file_path)
         QDesktopServices.openUrl(QUrl.fromLocalFile(file_path))
 
     def _revealInExplorer(self, file_path):
         subprocess.run(f'explorer.exe /select,{Path(file_path)}')
 
-    def _deleteFile(self, file_path):
-        result = QMessageBox.warning(self, "Delete File", f"Are you sure you want to delete:\n{file_path}?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+    def _deleteFile(self, file_paths):
+        assert isinstance(file_paths, list), "file_paths should be a list"
+
+        result = QMessageBox.warning(self, "Delete File", f"Are you sure you want to delete:\n{'\n'.join(file_paths)}", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if result == QMessageBox.StandardButton.No: return
-        try:
-            Path(file_path).unlink()
-        except PermissionError as e:
-            QMessageBox.warning(self, "Error", f"Could not delete file:\n{file_path}\n\n{str(e)}") 
+        for file_path in file_paths:
+            try:
+                Path(file_path).unlink()
+            except PermissionError as e:
+                QMessageBox.warning(self, "Error", f"Could not delete file:\n{file_path}\n\n{str(e)}") 
 
     def _renameFile(self, file_path):
         old_path = Path(file_path)
