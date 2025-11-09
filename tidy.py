@@ -34,6 +34,14 @@ class PdfExplorerWidget(QTreeView):
         super().__init__(parent)
 
         self.setSelectionMode(QTreeView.SelectionMode.ExtendedSelection)
+
+        # ---- Drag and drop ----
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.viewport().setAcceptDrops(True) 
+        self.setDropIndicatorShown(True)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.DragDrop)
         
         self.fs_model = QFileSystemModel()
 
@@ -81,6 +89,67 @@ class PdfExplorerWidget(QTreeView):
 
         # ---- Populate the view ----
         self.setRootPath(root_path)
+
+    def dropEvent(self, event):
+        mime = event.mimeData()
+        if not mime.hasUrls():
+            event.ignore()
+            return
+
+        pos = event.position().toPoint()
+        idx = self.indexAt(pos)
+
+        if idx.isValid():
+            src_idx = self.proxy_model.mapToSource(idx)
+            target_path = Path(self.fs_model.filePath(src_idx))
+            if target_path.is_file():
+                target_path = target_path.parent
+        else:
+            # empty area -> use current root dir
+            root_src_idx = self.proxy_model.mapToSource(self.rootIndex())
+            target_path = Path(self.fs_model.filePath(root_src_idx))
+
+        ok_any = False
+        for url in mime.urls():
+            src = Path(url.toLocalFile())
+            dst = target_path / src.name
+            try:
+                if src.resolve() != dst.resolve():
+                    src.replace(dst)  # move
+                ok_any = True
+            except Exception as e:
+                QMessageBox.warning(self, "Move failed", f"{src}\n→ {dst}\n\n{e}")
+
+        if ok_any:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        """Accept drops on folders OR on the empty area -> root."""
+        if not event.mimeData().hasUrls():
+            event.ignore()
+            return
+
+        pos = event.position().toPoint()
+        idx = self.indexAt(pos)
+
+        if idx.isValid():
+            src_idx = self.proxy_model.mapToSource(idx)
+            p = Path(self.fs_model.filePath(src_idx))
+            # allow drop on folders, and on files (we'll use parent in dropEvent)
+            if p.exists():
+                event.acceptProposedAction()
+                return
+
+        # no item under cursor: accept so we can drop into the current root
+        event.acceptProposedAction()
 
     def on_customContextMenuRequested(self, position: QPoint):
 
@@ -306,9 +375,9 @@ if __name__ == "__main__":
 
 
 # TODO list:
-# [ ] select multiple files, but not the folders
 # [ ] delete/rename: close file if opened in viewer
-# [ ] move files inside the viewer (from download to a specific folder)
+# [ ] close/or does not let to move the open file durin drag and drop
+# [ ] understand drag and drop: https://doc.qt.io/qt-6/dnd.html
 
 # [ ] jump to page dialog (pressing F2) - or change QLabel to QEdit
 
